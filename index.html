@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flappy Tittu</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root{
+            --bg-1: #0f1724;
+            --accent: #FFD166; /* warm gold */
+            --accent-2: #F59E0B; /* deeper amber */
+            --glass: rgba(255,255,255,0.04);
+            --card-bg: rgba(255,255,255,0.03);
+            --muted: rgba(255,255,255,0.85);
+            --pipe-dark: #111827; /* slate/near-black for pipes */
+            --pipe-edge: #374151; /* subtle highlight */
+        }
+
+        *{box-sizing:border-box}
+        html,body{height:100%}
+        body{
+            margin:0;
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+            /* darker black gradient background as requested */
+            background: linear-gradient(180deg,#000000 0%, #070707 60%, #0a0a0a 100%);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            padding:32px;
+            -webkit-font-smoothing:antialiased;
+            -moz-osx-font-smoothing:grayscale;
+            touch-action:none;
+            color:var(--muted);
+        }
+
+        #game-container{
+            width:100%;
+            max-width:420px;
+            aspect-ratio: 9 / 16;
+            border-radius:20px;
+            overflow:hidden;
+            position:relative;
+            box-shadow: 0 10px 30px rgba(2,6,23,0.6), inset 0 1px 0 rgba(255,255,255,0.03);
+            background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+            border: 1px solid rgba(255,255,255,0.03);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+        }
+
+        /* Fullscreen / immersive mode on small devices */
+        @media (max-width: 640px) {
+            body{ padding:0 }
+            #game-container{
+                position:fixed;
+                inset:0;
+                width:100vw;
+                height:100vh;
+                max-width:none;
+                border-radius:0;
+                z-index:1000;
+                box-shadow:none;
+                background: linear-gradient(180deg, #000000, #050505 80%);
+            }
+            .overlay-card{ width:92%; padding:18px }
+            .title{ font-size:1.4rem }
+            #score-display{ top:var(--safe-area,12px); left:12px }
+        }
+
+        canvas{ width:100%; height:100%; display:block; background:transparent }
+
+        .ui-layer{
+            position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:20; pointer-events:auto;
+        }
+
+        .overlay-card{
+            width:88%; max-width:360px; padding:22px; border-radius:14px; backdrop-filter: blur(6px) saturate(120%);
+            background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+            box-shadow: 0 8px 30px rgba(2,6,23,0.6);
+            text-align:center; color:var(--muted);
+        }
+
+        .title{font-size:1.6rem; font-weight:800; margin:0 0 6px; color:#fff}
+        .subtitle{font-size:0.95rem; margin:0 0 18px; color:rgba(255,255,255,0.85)}
+
+        .controls{display:flex; gap:12px; justify-content:center;}
+        .btn{
+            appearance:none; border:0; padding:12px 18px; border-radius:999px; font-weight:700; cursor:pointer; color:#05203a;
+        }
+
+        .btn-play{ background: linear-gradient(90deg,var(--accent),var(--accent-2)); box-shadow: 0 8px 24px rgba(245,158,11,0.12); color:#071026 }
+        .btn-ghost{ background:transparent; border:1px solid rgba(255,255,255,0.06); color:var(--muted) }
+
+        .hidden{ opacity:0; pointer-events:none; transform:translateY(6px); transition:all .25s ease }
+        .visible{ opacity:1; transform:none; transition:all .32s cubic-bezier(.2,.9,.3,1) }
+
+        #score-display{ position:absolute; top:12px; left:12px; z-index:25; display:flex; gap:8px; align-items:center }
+        .score-pill{ background:linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); padding:8px 12px; border-radius:999px; color:#fff; font-weight:800; font-size:1.1rem; box-shadow: 0 6px 18px rgba(2,6,23,0.6); border:1px solid rgba(255,209,102,0.06) }
+
+        /* responsive tweaks */
+        @media(min-width:900px){ #game-container{ max-width:520px; aspect-ratio: 10/16 } .title{font-size:1.9rem} }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="score-display"><div class="score-pill">0</div></div>
+
+        <div id="ui-screen" class="ui-layer visible">
+            <div class="overlay-card">
+                <div class="title" id="ui-title">Flappy Tittu</div>
+                <!-- <div class="subtitle" id="ui-subtitle">Easy mode — Tap or press Space to jump</div> -->
+                <div class="controls">
+                    <button id="start-btn" class="btn btn-play">PLAY</button>
+                    <button id="mute-btn" class="btn btn-ghost">MUTE</button>
+                </div>
+            </div>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const uiScreen = document.getElementById('ui-screen');
+        const uiTitle = document.getElementById('ui-title');
+        const uiSubtitle = document.getElementById('ui-subtitle');
+        const startBtn = document.getElementById('start-btn');
+        const muteBtn = document.getElementById('mute-btn');
+        const scoreDisplay = document.querySelector('#score-display .score-pill');
+
+        // Responsive high-DPI canvas setup
+        let canvasWidth = 400;
+        let canvasHeight = 600;
+        function resizeCanvas(){
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+            canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+            ctx.setTransform(dpr,0,0,dpr,0,0);
+            canvasWidth = rect.width || (canvas.width / dpr);
+            canvasHeight = rect.height || (canvas.height / dpr);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        // ensure canvas takes container size before first resize
+        requestAnimationFrame(resizeCanvas);
+
+        // Assets
+        const birdImg = new Image();
+        birdImg.src = 'divya.jpeg';
+
+        const bgMusic = new Audio('bgm.mp4'); bgMusic.loop = true; bgMusic.preload = 'auto';
+        const loseMusic = new Audio('loose.mp4'); loseMusic.preload = 'auto';
+
+        // Game Variables
+        let frames = 0;
+        let score = 0;
+        let gameState = 'START'; // START, PLAYING, GAMEOVER
+
+        // Bird Object
+        const bird = {
+            x: 50,
+            y: 150,
+            width: 56,
+            height: 56,
+            velocity: 0,
+            gravity: 0.28,
+                jumpStrength: -9,
+            draw() {
+                if (birdImg.complete && birdImg.naturalWidth) {
+                    ctx.drawImage(birdImg, this.x, this.y, this.width, this.height);
+                } else {
+                    ctx.fillStyle = '#FFD166';
+                    ctx.beginPath();
+                    ctx.ellipse(this.x + this.width/2, this.y + this.height/2, this.width/2, this.height/2, 0, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            },
+            update() {
+                this.velocity += this.gravity;
+                this.y += this.velocity;
+                if (this.y + this.height >= canvasHeight) {
+                    this.y = canvasHeight - this.height;
+                    gameOver();
+                }
+                if (this.y <= 0) { this.y = 0; this.velocity = 0; }
+            },
+            jump() { this.velocity = this.jumpStrength; }
+        };
+
+        // Pipes
+        const pipes = [];
+        const pipeWidth = 50;
+        // gap scales with the face size so larger faces can pass comfortably
+        // raised baseline gap and slightly larger multiplier for easy mode
+        let pipeGap = Math.max(300, Math.floor(bird.height * 2.2)); // easier baseline
+        const pipeSpeed = 2.0; // slower pipes for easier gameplay
+
+        function drawPipes(){
+            // draw pipes with professional slate colors and subtle edge
+            pipes.forEach(pipe => {
+                // top
+                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--pipe-dark') || '#111827';
+                ctx.fillRect(pipe.x, 0, pipeWidth, pipe.topHeight);
+                // top edge highlight
+                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--pipe-edge') || '#374151';
+                ctx.fillRect(pipe.x, Math.max(0, pipe.topHeight - 6), pipeWidth, 6);
+
+                // bottom
+                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--pipe-dark') || '#111827';
+                ctx.fillRect(pipe.x, pipe.topHeight + pipeGap, pipeWidth, canvasHeight - pipe.topHeight - pipeGap);
+                // bottom edge highlight
+                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--pipe-edge') || '#374151';
+                ctx.fillRect(pipe.x, pipe.topHeight + pipeGap, pipeWidth, 6);
+            });
+        }
+
+        function updatePipes(){
+            if (frames % 140 === 0) { // spawn less frequently for easy mode
+                const minHeight = 50;
+                const maxHeight = Math.max(80, canvasHeight - pipeGap - minHeight);
+                const topHeight = Math.floor(Math.random() * (maxHeight - minHeight + 1) + minHeight);
+                pipes.push({ x: canvasWidth, topHeight: topHeight, passed: false });
+            }
+            for (let i = pipes.length - 1; i >= 0; i--) {
+                const p = pipes[i];
+                p.x -= pipeSpeed;
+
+                // collision padding reduced slightly for easier play
+                const pad = 4;
+                if (bird.x + pad < p.x + pipeWidth && bird.x + bird.width - pad > p.x && (bird.y + pad < p.topHeight || bird.y + bird.height - pad > p.topHeight + pipeGap)) {
+                    gameOver();
+                }
+
+                // score
+                if (p.x + pipeWidth < bird.x && !p.passed) {
+                    score++;
+                    scoreDisplay.innerText = score;
+                    p.passed = true;
+                }
+
+                // cleanup
+                if (p.x + pipeWidth < -50) { pipes.splice(i,1); }
+            }
+        }
+
+        function drawBackground(){
+            // dark black gradient background for the game canvas
+            const grad = ctx.createLinearGradient(0,0,0,canvasHeight);
+            grad.addColorStop(0,'#000000');
+            grad.addColorStop(0.6,'#050505');
+            grad.addColorStop(1,'#0a0a0a');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0,0,canvasWidth,canvasHeight);
+
+            // subtle vignette
+            ctx.fillStyle = 'rgba(0,0,0,0.08)';
+            ctx.beginPath();
+            ctx.ellipse(canvasWidth/2, canvasHeight/2, canvasWidth*0.6, canvasHeight*0.6, 0, 0, Math.PI*2);
+            ctx.fill();
+        }
+
+        function loop(){
+            if (gameState !== 'PLAYING') return;
+            ctx.clearRect(0,0,canvasWidth,canvasHeight);
+            drawBackground();
+            bird.update(); bird.draw();
+            updatePipes(); drawPipes();
+            frames++; requestAnimationFrame(loop);
+        }
+
+        // Controls
+        function handleInput(e){
+            if (e && (e.type === 'touchstart' || (e.code === 'Space'))) e.preventDefault();
+            if (gameState === 'PLAYING') bird.jump();
+            else if (gameState === 'START') startGame();
+        }
+
+        // Start / Reset
+        async function startGame(){
+            // try to make immersive fullscreen on user gesture (may be blocked by some browsers)
+            try{
+                const el = document.getElementById('game-container');
+                if (el.requestFullscreen) await el.requestFullscreen();
+                else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+            }catch(e){/* ignore fullscreen failures */}
+
+            resizeCanvas();
+            bird.y = canvasHeight * 0.25; bird.velocity = 0;
+            pipes.length = 0; frames = 0; score = 0; scoreDisplay.innerText = score;
+            uiScreen.classList.add('hidden'); uiScreen.classList.remove('visible');
+            gameState = 'PLAYING';
+            loseMusic.pause(); loseMusic.currentTime = 0;
+            bgMusic.play().catch(()=>{});
+            // small initial hop
+            bird.jump();
+            requestAnimationFrame(loop);
+        }
+
+        function gameOver(){
+            if (gameState === 'GAMEOVER') return;
+            gameState = 'GAMEOVER'; bgMusic.pause(); try{ loseMusic.currentTime = 0; loseMusic.play(); }catch(e){}
+            uiTitle.innerText = 'Ouch!'; uiSubtitle.innerText = `Score: ${score}`; startBtn.innerText = 'TRY AGAIN';
+            uiScreen.classList.remove('hidden'); uiScreen.classList.add('visible');
+        }
+
+        // Mute control
+        let muted = false;
+        muteBtn.addEventListener('click', ()=>{
+            muted = !muted; bgMusic.muted = muted; loseMusic.muted = muted; muteBtn.innerText = muted? 'UNMUTE':'MUTE';
+        });
+
+        // Event listeners
+        window.addEventListener('keydown', (e)=>{ if (e.code === 'Space') handleInput(e); });
+        canvas.addEventListener('mousedown', handleInput);
+        canvas.addEventListener('touchstart', handleInput, { passive:false });
+        startBtn.addEventListener('click', startGame);
+
+        // initial draw after sizing
+        requestAnimationFrame(()=>{ resizeCanvas(); drawBackground(); bird.draw(); });
+    </script>
+</body>
+</html>
