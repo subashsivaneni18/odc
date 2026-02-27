@@ -105,15 +105,16 @@
 <body>
 
     <div id="game-container">
-        <div id="score-display"><div class="score-pill">0</div></div>
+        <div id="score-display"><div class="score-pill">0</div><button id="lose-btn" class="btn btn-ghost" style="margin-left:8px; display:none; padding:6px 10px;">LOSE</button></div>
 
         <div id="ui-screen" class="ui-layer visible">
             <div class="overlay-card">
                 <div class="title" id="ui-title">Flappy Tittu</div>
-                <!-- <div class="subtitle" id="ui-subtitle">Easy mode — Tap or press Space to jump</div> -->
+                <div class="subtitle" id="ui-subtitle"></div>
                 <div class="controls">
                     <button id="start-btn" class="btn btn-play">PLAY</button>
                     <button id="mute-btn" class="btn btn-ghost">MUTE</button>
+                    <!-- <button id="cheat-btn" class="btn btn-ghost">CHEAT: ON</button> -->
                 </div>
             </div>
         </div>
@@ -153,13 +154,15 @@
 
         const bgMusic = new Audio('bgm.mp4'); bgMusic.loop = true; bgMusic.preload = 'auto';
         const loseMusic = new Audio('loose.mp4'); loseMusic.preload = 'auto';
+        const cheatBtn = document.getElementById('cheat-btn');
+        const loseBtn = document.getElementById('lose-btn');
 
         // Game Variables
         let frames = 0;
         let score = 0;
         let gameState = 'START'; // START, PLAYING, GAMEOVER
         // Cheat mode: auto-score and no collisions (easy scoring without tapping)
-        const cheat = true;
+        let cheat = true;
 
         // Bird Object
         const bird = {
@@ -230,7 +233,8 @@
                 const minHeight = 50;
                 const maxHeight = Math.max(80, canvasHeight - pipeGap - minHeight);
                 const topHeight = Math.floor(Math.random() * (maxHeight - minHeight + 1) + minHeight);
-                pipes.push({ x: canvasWidth, topHeight: topHeight, passed: false });
+                // mark spawned pipes as already passed when cheating so they don't add score
+                pipes.push({ x: canvasWidth, topHeight: topHeight, passed: cheat });
             }
             for (let i = pipes.length - 1; i >= 0; i--) {
                 const p = pipes[i];
@@ -243,10 +247,9 @@
                     gameOver();
                 }
 
-                // score
+                // score (only count pipe passes when not cheating)
                 if (p.x + pipeWidth < bird.x && !p.passed) {
-                    score++;
-                    scoreDisplay.innerText = score;
+                    if (!cheat) { score++; scoreDisplay.innerText = score; }
                     p.passed = true;
                 }
 
@@ -301,6 +304,7 @@
             resizeCanvas();
             bird.y = canvasHeight * 0.25; bird.velocity = 0;
             pipes.length = 0; frames = 0; score = 0; scoreDisplay.innerText = score;
+            if (loseBtn) loseBtn.style.display = 'inline-block';
             uiScreen.classList.add('hidden'); uiScreen.classList.remove('visible');
             gameState = 'PLAYING';
             loseMusic.pause(); loseMusic.currentTime = 0;
@@ -313,6 +317,7 @@
         function gameOver(){
             if (gameState === 'GAMEOVER') return;
             gameState = 'GAMEOVER'; bgMusic.pause(); try{ loseMusic.currentTime = 0; loseMusic.play(); }catch(e){}
+            if (loseBtn) loseBtn.style.display = 'none';
             uiTitle.innerText = 'Ouch!'; uiSubtitle.innerText = `Score: ${score}`; startBtn.innerText = 'TRY AGAIN';
             uiScreen.classList.remove('hidden'); uiScreen.classList.add('visible');
         }
@@ -322,6 +327,23 @@
         muteBtn.addEventListener('click', ()=>{
             muted = !muted; bgMusic.muted = muted; loseMusic.muted = muted; muteBtn.innerText = muted? 'UNMUTE':'MUTE';
         });
+
+        // Cheat toggle control
+        if (cheatBtn) {
+            cheatBtn.addEventListener('click', ()=>{
+                cheat = !cheat;
+                cheatBtn.innerText = cheat ? 'CHEAT: ON' : 'CHEAT: OFF';
+            });
+        }
+
+        // In-game LOSE button: when clicked during play, trigger game over and show score card
+        if (loseBtn) {
+            loseBtn.addEventListener('click', ()=>{
+                if (gameState === 'PLAYING') gameOver();
+            });
+            // ensure it's hidden initially
+            loseBtn.style.display = 'none';
+        }
 
         // Event listeners
         window.addEventListener('keydown', (e)=>{ if (e.code === 'Space') handleInput(e); });
