@@ -158,6 +158,8 @@
         let frames = 0;
         let score = 0;
         let gameState = 'START'; // START, PLAYING, GAMEOVER
+        // Cheat mode: auto-score and no collisions (easy scoring without tapping)
+        const cheat = true;
 
         // Bird Object
         const bird = {
@@ -179,6 +181,12 @@
                 }
             },
             update() {
+                // In cheat mode keep the bird centered and prevent falling/crashing
+                if (cheat) {
+                    this.y = canvasHeight * 0.5;
+                    this.velocity = 0;
+                    return;
+                }
                 this.velocity += this.gravity;
                 this.y += this.velocity;
                 if (this.y + this.height >= canvasHeight) {
@@ -230,7 +238,8 @@
 
                 // collision padding reduced slightly for easier play
                 const pad = 4;
-                if (bird.x + pad < p.x + pipeWidth && bird.x + bird.width - pad > p.x && (bird.y + pad < p.topHeight || bird.y + bird.height - pad > p.topHeight + pipeGap)) {
+                // skip collisions when cheat mode is enabled
+                if (!cheat && bird.x + pad < p.x + pipeWidth && bird.x + bird.width - pad > p.x && (bird.y + pad < p.topHeight || bird.y + bird.height - pad > p.topHeight + pipeGap)) {
                     gameOver();
                 }
 
@@ -268,6 +277,8 @@
             drawBackground();
             bird.update(); bird.draw();
             updatePipes(); drawPipes();
+            // auto-increment score in cheat mode so player gains points without tapping
+            if (cheat && frames % 30 === 0) { score++; scoreDisplay.innerText = score; }
             frames++; requestAnimationFrame(loop);
         }
 
